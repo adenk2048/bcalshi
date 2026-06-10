@@ -10,6 +10,7 @@ from markets.views import MAX_PENDING_SUGGESTIONS
 from trading.models import Order
 
 
+#meant to detect any errors which could arise from adding more 
 class ControlAccessTests(TestCase):
     def setUp(self):
         self.boss = User.objects.create_user("boss", password="pw", is_staff=True)
@@ -73,7 +74,6 @@ class CloseMarketTests(TestCase):
         self.assertTrue(self.market.is_closed)
         self.assertFalse(self.market.is_tradable)
 
-        # Trading is rejected while closed.
         self.client.login(username="trader", password="pw")
         res = self.post_json("/api/trading/buy/", {
             "market_id": self.market.id, "shares": 5, "price": 0.50,
@@ -81,7 +81,6 @@ class CloseMarketTests(TestCase):
         self.assertEqual(res.status_code, 400)
         self.assertIn("closed", res.json()["error"])
 
-        # Cancelling resting orders still works while closed.
         order = Order.objects.create(
             user=self.trader, market=self.market, side=Order.BUY,
             price=Decimal("0.40"), shares=5,
@@ -89,7 +88,6 @@ class CloseMarketTests(TestCase):
         res = self.client.post(f"/api/trading/orders/{order.id}/cancel/")
         self.assertTrue(res.json()["success"])
 
-        # Reopen restores trading.
         self.client.login(username="boss", password="pw")
         self.post_json(f"/api/markets/{self.market.id}/close/", {"action": "reopen"})
         self.client.login(username="trader", password="pw")

@@ -4,11 +4,12 @@ from . import views
 urlpatterns = [
     path("", views.list_markets),
 
-    # suggestions (must precede the <int:market_id> patterns)
+    # suggestions 
     path("suggestions/", views.create_suggestion, name="api-create-suggestion"),
     path("suggestions/me/", views.my_suggestions, name="api-my-suggestions"),
     path("suggestions/<int:suggestion_id>/review/", views.review_suggestion, name="api-review-suggestion"),
 
+    #markets
     path("<int:market_id>/", views.market_detail),
     path("<int:market_id>/positions/", views.market_positions),
 

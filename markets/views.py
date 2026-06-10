@@ -18,12 +18,11 @@ def _is_market_admin(user):
     return user.is_authenticated and user.is_staff
 
 
-# Page gate: redirects non-staff to login like other protected pages.
 market_admin_required = user_passes_test(_is_market_admin)
 
 
 def _staff_api_guard(request):
-    """JSON endpoints return errors instead of redirects."""
+
     if not request.user.is_authenticated:
         return JsonResponse({"error": "login required"}, status=401)
     if not request.user.is_staff:
@@ -33,7 +32,7 @@ def _staff_api_guard(request):
     return None
 
 
-# ---------------------------------------------------------------- pages
+# pages
 
 def home_page(request):
     markets = Market.objects.all().order_by("resolved", "-created_at")
@@ -91,7 +90,7 @@ def suggest_page(request):
     return render(request, "suggest.html")
 
 
-# ---------------------------------------------------------------- control APIs
+# control APIs
 
 def resolve_market_api(request, market_id):
     guard = _staff_api_guard(request)
@@ -116,7 +115,7 @@ def resolve_market_api(request, market_id):
     })
 
 
-# ---------------------------------------------------------------- suggestions
+#  suggestions
 
 def _suggestion_payload(s):
     return {
@@ -243,7 +242,7 @@ def close_market_api(request, market_id):
     return JsonResponse({"success": True, "market": market.title, "status": market.status})
 
 
-# ---------------------------------------------------------------- APIs
+# APIs
 
 def list_markets(request):
     markets = Market.objects.all().order_by("-created_at")

@@ -1,8 +1,3 @@
-"""URL configuration for Bcalshi.
-
-Pages render templates; everything under /api/ is JSON and lives in the
-owning app's urls.py.
-"""
 from django.contrib import admin
 from django.urls import include, path
 
