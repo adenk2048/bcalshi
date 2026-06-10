@@ -1,0 +1,338 @@
+{% extends "base.html" %}
+
+{% block title %}{{ market.title }} — Bcalshi{% endblock %}
+
+{% block content %}
+<h1>{{ market.title }}</h1>
+{% if market.description %}<p class="muted" style="margin-top:-8px;">{{ market.description }}</p>{% endif %}
+
+{% if market.resolved %}
+    <div class="card" style="margin-bottom:16px;">
+        This market has resolved
+        {% if market.outcome %}<span class="badge yes">YES</span>{% else %}<span class="badge no">NO</span>{% endif %}
+        — trading is closed.
+    </div>
+{% elif market.is_closed %}
+    <div class="card" style="margin-bottom:16px;">
+        <span class="badge neutral">CLOSED</span>
+        Trading is halted for this market — awaiting resolution. Open orders can still be cancelled.
+    </div>
+{% endif %}
+
+<div class="grid" style="grid-template-columns: 2fr 1fr; align-items:start;">
+
+    <div class="card">
+        <h2>Price Chart <span class="muted" style="font-size:12px; font-weight:400;">last 20 trades</span></h2>
+        <div style="position:relative; height:260px;">
+            <p id="noTrades" style="display:none;" class="empty">No trades yet.</p>
+            <canvas id="priceChart"></canvas>
+        </div>
+    </div>
+
+    <div class="card">
+        <h2>Order Book</h2>
+        <table>
+            <thead><tr><th>Bid shares</th><th>Price</th><th>Ask shares</th></tr></thead>
+            <tbody id="bookRows"></tbody>
+        </table>
+        <div id="bookEmpty" class="empty" style="display:none;">Book is empty.</div>
+    </div>
+
+</div>
+
+{% if user.is_authenticated and market.is_tradable %}
+<div class="grid" style="grid-template-columns: 1fr 1fr; margin-top:16px;">
+
+    <div class="card">
+        <h2 style="color:var(--green);">Buy</h2>
+        <div class="grid" style="grid-template-columns: 1fr 1fr;">
+            <div><label>Shares</label><input id="buyShares" type="number" min="1" step="1" placeholder="10"></div>
+            <div><label>Limit price (0.01–0.99)</label><input id="buyPrice" type="number" min="0.01" max="0.99" step="0.01" placeholder="0.50"></div>
+        </div>
+        <div id="buyHint" class="muted" style="font-size:13px; min-height:18px; margin:8px 0;"></div>
+        <button class="btn-green" onclick="placeOrder('buy')">Place Buy Order</button>
+    </div>
+
+    <div class="card">
+        <h2 style="color:var(--red);">Sell</h2>
+        <div class="grid" style="grid-template-columns: 1fr 1fr;">
+            <div><label>Shares</label><input id="sellShares" type="number" min="1" step="1" placeholder="10"></div>
+            <div><label>Limit price (0.01–0.99)</label><input id="sellPrice" type="number" min="0.01" max="0.99" step="0.01" placeholder="0.50"></div>
+        </div>
+        <div id="sellHint" class="muted" style="font-size:13px; min-height:18px; margin:8px 0;"></div>
+        <button class="btn-red" onclick="placeOrder('sell')">Place Sell Order</button>
+    </div>
+
+</div>
+
+<p id="status" style="font-weight:600;"></p>
+
+<div class="grid" style="grid-template-columns: 1fr 2fr; margin-top:16px; align-items:start;">
+
+    <div class="card">
+        <h2>Your Position</h2>
+        <div id="myPosition" class="muted">Loading…</div>
+    </div>
+
+    <div class="card">
+        <h2>Your Open Orders Here</h2>
+        <table>
+            <thead><tr><th>Side</th><th>Price</th><th>Remaining</th><th></th></tr></thead>
+            <tbody id="myOrderRows"></tbody>
+        </table>
+        <div id="myOrdersEmpty" class="empty" style="display:none;">No open orders in this market.</div>
+        <div class="muted" style="font-size:12px; margin-top:8px;">All your orders: <a href="/orders/">Open Orders page</a></div>
+    </div>
+
+</div>
+{% elif not user.is_authenticated %}
+<div class="card" style="margin-top:16px;">
+    <a href="/accounts/login/">Login</a> or <a href="/accounts/signup/">sign up</a> to trade this market.
+</div>
+{% endif %}
+
+<div class="card" style="margin-top:16px;">
+    <h2>Recent Trades</h2>
+    <table>
+        <thead><tr><th>Price</th><th>Shares</th><th>Buyer</th><th>Seller</th><th>Time</th></tr></thead>
+        <tbody id="tradeRows"></tbody>
+    </table>
+    <div id="tradesEmpty" class="empty" style="display:none;">No trades yet.</div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+<script>
+const marketId = Number("{{ market.id }}");
+const isAuthed = {% if user.is_authenticated %}true{% else %}false{% endif %};
+const isResolved = {% if market.resolved %}true{% else %}false{% endif %};
+
+let myShares = 0;          // current position in this market (negative = short)
+let myOpenSellRemaining = 0;
+
+// ------------------- CHART -------------------
+
+const ctx = document.getElementById("priceChart").getContext("2d");
+const priceChart = new Chart(ctx, {
+    type: "line",
+    data: {
+        datasets: [{
+            label: "Trade Price",
+            data: [],
+            borderColor: "#2563eb",
+            backgroundColor: "rgba(37,99,235,0.08)",
+            borderWidth: 2,
+            pointRadius: 4,
+            pointHoverRadius: 6,
+            tension: 0.1,
+            fill: true,
+        }]
+    },
+    options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        scales: {
+            // Sliding window of recent trades: sequence order only, evenly
+            // spaced — date and time intentionally not shown.
+            x: { type: "linear", display: false },
+            y: {
+                min: 0, max: 1,
+                ticks: { callback: v => (v * 100).toFixed(0) + "¢" }
+            }
+        },
+        plugins: {
+            legend: { display: false },
+            tooltip: {
+                callbacks: {
+                    title: () => null,
+                    label: c => `${(c.parsed.y * 100).toFixed(1)}¢  (${c.raw.shares} shares)`
+                }
+            }
+        }
+    }
+});
+
+const MAX_CHART_POINTS = 20;
+
+function updateChart(trades) {
+    const noTrades = document.getElementById("noTrades");
+    if (!trades.length) {
+        noTrades.style.display = "block";
+        ctx.canvas.style.display = "none";
+        return;
+    }
+    noTrades.style.display = "none";
+    ctx.canvas.style.display = "block";
+
+    // API returns newest-first: take the 20 most recent, then reverse so
+    // the window reads oldest→newest left to right.
+    const points = trades.slice(0, MAX_CHART_POINTS).reverse().map((t, i) => ({
+        x: i,
+        y: parseFloat(t.price),
+        shares: t.shares,
+    }));
+    priceChart.data.datasets[0].data = points;
+    priceChart.update();
+}
+
+// ------------------- DATA LOADERS -------------------
+
+async function loadTrades() {
+    const res = await fetch(`/api/trading/markets/${marketId}/trades/`);
+    const data = await res.json();
+
+    updateChart(data.trades);
+
+    document.getElementById("tradesEmpty").style.display = data.trades.length ? "none" : "block";
+    document.getElementById("tradeRows").innerHTML = data.trades.map(t => `
+        <tr>
+            <td><b>${fmtPrice(t.price)}</b></td>
+            <td>${t.shares}</td>
+            <td>${escapeHtml(t.buyer)}</td>
+            <td>${escapeHtml(t.seller)}</td>
+            <td class="muted">${fmtDate(t.created_at)}</td>
+        </tr>
+    `).join("");
+}
+
+async function loadBook() {
+    if (!isAuthed) return;
+    const res = await fetch(`/api/trading/orderbook/${marketId}/`);
+    const data = await res.json();
+
+    const rows = Math.max(data.bids.length, data.asks.length);
+    document.getElementById("bookEmpty").style.display = rows ? "none" : "block";
+
+    let html = "";
+    for (let i = 0; i < Math.min(rows, 8); i++) {
+        const bid = data.bids[i], ask = data.asks[i];
+        html += `<tr>
+            <td class="pos">${bid ? bid.shares : ""}</td>
+            <td>${bid ? fmtPrice(bid.price) : ""}${bid && ask ? " / " : ""}${ask ? fmtPrice(ask.price) : ""}</td>
+            <td class="neg">${ask ? ask.shares : ""}</td>
+        </tr>`;
+    }
+    document.getElementById("bookRows").innerHTML = html;
+}
+
+async function loadMyState() {
+    // The position/orders panels only render when the market is tradable.
+    if (!isAuthed || !document.getElementById("myPosition")) return;
+
+    const [pf, od] = await Promise.all([
+        fetch("/api/trading/portfolio/").then(r => r.json()),
+        fetch("/api/trading/orders/me/").then(r => r.json()),
+    ]);
+
+    const pos = pf.positions.find(p => p.market_id === marketId);
+    myShares = pos ? pos.shares : 0;
+
+    const posEl = document.getElementById("myPosition");
+    if (myShares > 0) {
+        posEl.innerHTML = `<span class="badge long">LONG</span> <b>${myShares}</b> shares`;
+    } else if (myShares < 0) {
+        posEl.innerHTML = `<span class="badge short">SHORT</span> <b>${-myShares}</b> shares
+            <div class="muted" style="font-size:12px; margin-top:6px;">$${(-myShares).toFixed(2)} collateral locked — buy to cover</div>`;
+    } else {
+        posEl.innerHTML = `<span class="muted">No position. Cash: ${fmtMoney(pf.balance)}</span>`;
+    }
+
+    const mine = od.orders.filter(o => o.market_id === marketId && o.status === "OPEN");
+    myOpenSellRemaining = mine.filter(o => o.side === "SELL").reduce((s, o) => s + o.remaining, 0);
+
+    document.getElementById("myOrdersEmpty").style.display = mine.length ? "none" : "block";
+    document.getElementById("myOrderRows").innerHTML = mine.map(o => `
+        <tr>
+            <td><span class="badge ${o.side.toLowerCase()}">${o.side}</span></td>
+            <td>${fmtPrice(o.price)}</td>
+            <td>${o.remaining} / ${o.shares}</td>
+            <td style="text-align:right;"><button class="btn-small" onclick="cancelOrder(${o.id})">Cancel</button></td>
+        </tr>
+    `).join("");
+
+    updateHints();
+}
+
+// ------------------- ORDER TICKET -------------------
+
+function updateHints() {
+    const buyHint = document.getElementById("buyHint");
+    const sellHint = document.getElementById("sellHint");
+    if (!buyHint) return;
+
+    const buyN = Number(document.getElementById("buyShares").value) || 0;
+    const sellN = Number(document.getElementById("sellShares").value) || 0;
+    const sellP = Number(document.getElementById("sellPrice").value) || 0;
+
+    if (myShares < 0 && buyN > 0) {
+        const covers = Math.min(buyN, -myShares);
+        buyHint.innerHTML = `Covers <b>${covers}</b> short share${covers === 1 ? "" : "s"} and releases $${covers.toFixed(2)} collateral.`;
+    } else {
+        buyHint.textContent = "";
+    }
+
+    const availableLong = Math.max(0, myShares - myOpenSellRemaining);
+    const opensShort = Math.max(0, sellN - availableLong);
+    if (sellN > 0 && opensShort > 0) {
+        const collateral = sellP > 0 ? ((1 - sellP) * opensShort).toFixed(2) : "—";
+        sellHint.innerHTML = `Opens a <span class="badge short">SHORT</span> of <b>${opensShort}</b> share${opensShort === 1 ? "" : "s"} (net collateral ≈ $${collateral}). Pays out if this market resolves NO.`;
+    } else if (sellN > 0) {
+        sellHint.textContent = "Sells from the shares you hold.";
+    } else {
+        sellHint.textContent = "";
+    }
+}
+
+async function placeOrder(side) {
+    const shares = Number(document.getElementById(side + "Shares").value);
+    const price = Number(document.getElementById(side + "Price").value);
+
+    const data = await postJSON(`/api/trading/${side}/`, { market_id: marketId, shares, price });
+
+    const status = document.getElementById("status");
+    if (data.success) {
+        const o = data.order;
+        let msg = `${o.side} order placed: ${o.shares} @ ${fmtPrice(o.price)} — ${o.status}`;
+        if (o.status === "OPEN" && o.filled > 0) msg += ` (${o.filled} filled)`;
+        if (data.opens_short) msg += ` · opened short of ${data.opens_short}`;
+        if (data.covers_short) msg += ` · covering short`;
+        status.style.color = "var(--green)";
+        status.textContent = msg;
+    } else {
+        status.style.color = "var(--red)";
+        status.textContent = "Error: " + (data.error || "unknown");
+    }
+    refresh();
+}
+
+async function cancelOrder(id) {
+    const data = await postJSON(`/api/trading/orders/${id}/cancel/`);
+    const status = document.getElementById("status");
+    if (data.success) {
+        status.style.color = "var(--ink)";
+        status.textContent = "Order cancelled.";
+    } else {
+        status.style.color = "var(--red)";
+        status.textContent = "Error: " + (data.error || "unknown");
+    }
+    refresh();
+}
+
+// ------------------- WIRING -------------------
+
+function refresh() {
+    loadTrades();
+    loadBook();
+    loadMyState();
+}
+
+for (const id of ["buyShares", "sellShares", "sellPrice", "buyPrice"]) {
+    const el = document.getElementById(id);
+    if (el) el.addEventListener("input", updateHints);
+}
+
+refresh();
+setInterval(refresh, 3000);
+</script>
+{% endblock %}

@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__Claude_Preview__preview_start",
+      "PowerShell(Stop-Process -Id 29108 -Force)",
+      "PowerShell(.\\\\venv\\\\Scripts\\\\python.exe manage.py test trading -v 1)"
+    ]
+  }
+}

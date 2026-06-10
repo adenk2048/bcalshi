@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+
+{% block title %}Login — Bcalshi{% endblock %}
+
+{% block content %}
+<div class="card" style="max-width:380px; margin:40px auto;">
+    <h1>Login</h1>
+
+    <form method="post">
+        {% csrf_token %}
+        {{ form.as_p }}
+        <button type="submit" class="btn-green" style="width:100%;">Login</button>
+    </form>
+
+    <p class="muted" style="font-size:13px;">
+        No account? <a href="/accounts/signup/">Sign up</a> — new traders start with $10,000.
+    </p>
+</div>
+{% endblock %}

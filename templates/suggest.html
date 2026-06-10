@@ -1,0 +1,107 @@
+{% extends "base.html" %}
+
+{% block title %}Suggest a Market — Bcalshi{% endblock %}
+
+{% block content %}
+<h1>Suggest a Market</h1>
+<p class="muted" style="margin-top:-10px;">
+    Have an event you want to trade on? Pitch it. The market admin reviews every
+    suggestion — approved ones go live as tradable markets. You can have up to
+    5 suggestions pending at once.
+</p>
+
+<div class="card" style="margin-bottom:16px;">
+    <div style="margin-bottom:12px;">
+        <label>Event title (phrase it as a YES/NO question)</label>
+        <input id="title" maxlength="255" placeholder="Will it snow in NYC this December?">
+    </div>
+    <div style="margin-bottom:12px;">
+        <label>Resolution criteria (optional, but helps it get approved)</label>
+        <textarea id="description" rows="3" style="width:100%; font:inherit; padding:8px 10px; border:1px solid var(--line);"
+            placeholder="Resolves YES if measurable snow falls in Central Park before Jan 1."></textarea>
+    </div>
+    <button class="btn-green" onclick="submitSuggestion()">Submit Suggestion</button>
+    <span id="formStatus" style="font-weight:600; margin-left:10px;"></span>
+</div>
+
+<div class="card">
+    <h2>Your Suggestions</h2>
+    <table>
+        <thead>
+            <tr>
+                <th>Title</th>
+                <th>Status</th>
+                <th>Submitted</th>
+                <th>Outcome</th>
+            </tr>
+        </thead>
+        <tbody id="suggestionRows"></tbody>
+    </table>
+    <div id="noSuggestions" class="empty" style="display:none;">Nothing suggested yet.</div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function statusBadge(s) {
+    if (s === "APPROVED") return '<span class="badge long">APPROVED</span>';
+    if (s === "REJECTED") return '<span class="badge short">REJECTED</span>';
+    return '<span class="badge neutral">PENDING</span>';
+}
+
+async function loadSuggestions() {
+    const res = await fetch("/api/markets/suggestions/me/");
+    const data = await res.json();
+
+    document.getElementById("noSuggestions").style.display = data.suggestions.length ? "none" : "block";
+    document.getElementById("suggestionRows").innerHTML = data.suggestions.map(s => {
+        let outcome = '<span class="muted">awaiting review</span>';
+        if (s.status === "APPROVED") {
+            outcome = s.market_id
+                ? `<a href="/market/${s.market_id}/">Trade it now →</a>`
+                : '<span class="muted">market removed</span>';
+        } else if (s.status === "REJECTED") {
+            outcome = s.review_note
+                ? `<span class="muted">"${escapeHtml(s.review_note)}"</span>`
+                : '<span class="muted">—</span>';
+        }
+        return `
+            <tr>
+                <td><b>${escapeHtml(s.title)}</b>
+                    ${s.description ? `<div class="muted" style="font-size:12px;">${escapeHtml(s.description)}</div>` : ""}
+                </td>
+                <td>${statusBadge(s.status)}</td>
+                <td class="muted">${fmtDate(s.created_at)}</td>
+                <td>${outcome}</td>
+            </tr>`;
+    }).join("");
+}
+
+async function submitSuggestion() {
+    const title = document.getElementById("title").value.trim();
+    const description = document.getElementById("description").value.trim();
+    const status = document.getElementById("formStatus");
+
+    if (!title) {
+        status.style.color = "var(--red)";
+        status.textContent = "Title is required.";
+        return;
+    }
+
+    const data = await postJSON("/api/markets/suggestions/", { title, description });
+    if (data.success) {
+        status.style.color = "var(--green)";
+        status.textContent = "Submitted! The admin will review it.";
+        document.getElementById("title").value = "";
+        document.getElementById("description").value = "";
+    } else {
+        status.style.color = "var(--red)";
+        status.textContent = "Error: " + (data.error || "unknown");
+    }
+    loadSuggestions();
+}
+
+loadSuggestions();
+setInterval(loadSuggestions, 5000);
+</script>
+{% endblock %}

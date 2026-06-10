@@ -1,0 +1,103 @@
+{% extends "base.html" %}
+
+{% block title %}Portfolio — Bcalshi{% endblock %}
+
+{% block content %}
+<h1>Your Portfolio</h1>
+
+<div class="grid" style="grid-template-columns: repeat(4, 1fr); margin-bottom:16px;">
+    <div class="card">
+        <div class="muted" style="font-size:12px; text-transform:uppercase;">Cash</div>
+        <div id="cash" style="font-size:22px; font-weight:800;">—</div>
+    </div>
+    <div class="card">
+        <div class="muted" style="font-size:12px; text-transform:uppercase;">Short Collateral</div>
+        <div id="locked" style="font-size:22px; font-weight:800;">—</div>
+        <div class="muted" style="font-size:11px;">released when you cover</div>
+    </div>
+    <div class="card">
+        <div class="muted" style="font-size:12px; text-transform:uppercase;">Position Value</div>
+        <div id="posValue" style="font-size:22px; font-weight:800;">—</div>
+        <div class="muted" style="font-size:11px;">at last traded prices</div>
+    </div>
+    <div class="card">
+        <div class="muted" style="font-size:12px; text-transform:uppercase;">Total Equity</div>
+        <div id="equity" style="font-size:22px; font-weight:800;">—</div>
+    </div>
+</div>
+
+<div class="card">
+    <h2>Shares You Own</h2>
+    <table>
+        <thead>
+            <tr>
+                <th>Market</th>
+                <th>Direction</th>
+                <th>Shares</th>
+                <th>Last Price</th>
+                <th>Value</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody id="positionRows"></tbody>
+    </table>
+    <div id="noPositions" class="empty" style="display:none;">
+        You don't hold any shares yet. <a href="/">Find a market to trade</a>.
+    </div>
+</div>
+
+<p class="muted" style="font-size:13px;">
+    Pending orders aren't shown here — see <a href="/orders/">Open Orders</a>.
+    Short positions show negative value: that's the cost of buying back at the last price;
+    the locked collateral behind them is counted in Total Equity.
+</p>
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function loadPortfolio() {
+    const res = await fetch("/api/trading/portfolio/");
+    const data = await res.json();
+
+    document.getElementById("cash").textContent = fmtMoney(data.balance);
+    document.getElementById("locked").textContent = fmtMoney(data.locked);
+
+    let positionValue = 0;
+    const rows = data.positions.map(p => {
+        const last = p.last_price;
+        const value = last === null ? null : p.shares * last;
+        if (value !== null) positionValue += value;
+
+        const dirClass = p.direction === "SHORT" ? "short" : "long";
+        const valueCell = value === null
+            ? '<span class="muted">—</span>'
+            : `<span class="${value < 0 ? "neg" : "pos"}">${fmtMoney(value)}</span>`;
+
+        return `
+            <tr>
+                <td><a href="/market/${p.market_id}/">${escapeHtml(p.market_title)}</a></td>
+                <td><span class="badge ${dirClass}">${p.direction}</span></td>
+                <td><b>${Math.abs(p.shares)}</b></td>
+                <td>${fmtPrice(last)}</td>
+                <td>${valueCell}</td>
+                <td style="text-align:right;">
+                    <a href="/market/${p.market_id}/"><button class="btn-small">${p.direction === "SHORT" ? "Buy to cover" : "Trade"}</button></a>
+                </td>
+            </tr>`;
+    });
+
+    document.getElementById("noPositions").style.display = rows.length ? "none" : "block";
+    document.getElementById("positionRows").innerHTML = rows.join("");
+
+    document.getElementById("posValue").textContent = fmtMoney(positionValue);
+    // Equity: cash + collateral coming back + what positions are worth.
+    // For a short, (locked collateral) + (negative position value) nets to
+    // the profit of covering at the last price.
+    document.getElementById("equity").textContent =
+        fmtMoney(data.balance + data.locked + positionValue);
+}
+
+loadPortfolio();
+setInterval(loadPortfolio, 3000);
+</script>
+{% endblock %}

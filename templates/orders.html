@@ -1,0 +1,104 @@
+{% extends "base.html" %}
+
+{% block title %}Open Orders — Bcalshi{% endblock %}
+
+{% block content %}
+<h1>Open Orders</h1>
+<p class="muted" style="margin-top:-10px;">
+    Your pending buy and sell offers. They rest in the order book until matched or cancelled.
+</p>
+
+<div class="card" style="margin-bottom:16px;">
+    <h2>Pending</h2>
+    <table>
+        <thead>
+            <tr>
+                <th>Market</th>
+                <th>Side</th>
+                <th>Limit Price</th>
+                <th>Filled</th>
+                <th>Remaining</th>
+                <th>Placed</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody id="openRows"></tbody>
+    </table>
+    <div id="noOpen" class="empty" style="display:none;">
+        No pending offers. <a href="/">Place one from a market page</a>.
+    </div>
+</div>
+
+<div class="card">
+    <h2>Completed &amp; Cancelled</h2>
+    <table>
+        <thead>
+            <tr>
+                <th>Market</th>
+                <th>Side</th>
+                <th>Limit Price</th>
+                <th>Filled</th>
+                <th>Status</th>
+                <th>Placed</th>
+            </tr>
+        </thead>
+        <tbody id="closedRows"></tbody>
+    </table>
+    <div id="noClosed" class="empty" style="display:none;">No order history yet.</div>
+</div>
+
+<p id="status" style="font-weight:600;"></p>
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function loadOrders() {
+    const res = await fetch("/api/trading/orders/me/");
+    const data = await res.json();
+
+    const open = data.orders.filter(o => o.status === "OPEN");
+    const closed = data.orders.filter(o => o.status !== "OPEN");
+
+    document.getElementById("noOpen").style.display = open.length ? "none" : "block";
+    document.getElementById("openRows").innerHTML = open.map(o => `
+        <tr>
+            <td><a href="/market/${o.market_id}/">${escapeHtml(o.market)}</a></td>
+            <td><span class="badge ${o.side.toLowerCase()}">${o.side}</span></td>
+            <td><b>${fmtPrice(o.price)}</b></td>
+            <td>${o.filled} / ${o.shares}</td>
+            <td><b>${o.remaining}</b></td>
+            <td class="muted">${fmtDate(o.created_at)}</td>
+            <td style="text-align:right;"><button class="btn-small" onclick="cancelOrder(${o.id})">Cancel</button></td>
+        </tr>
+    `).join("");
+
+    document.getElementById("noClosed").style.display = closed.length ? "none" : "block";
+    document.getElementById("closedRows").innerHTML = closed.map(o => `
+        <tr>
+            <td><a href="/market/${o.market_id}/">${escapeHtml(o.market)}</a></td>
+            <td><span class="badge ${o.side.toLowerCase()}">${o.side}</span></td>
+            <td>${fmtPrice(o.price)}</td>
+            <td>${o.filled} / ${o.shares}</td>
+            <td><span class="badge ${o.status === "FILLED" ? "long" : "neutral"}">${o.status}</span></td>
+            <td class="muted">${fmtDate(o.created_at)}</td>
+        </tr>
+    `).join("");
+}
+
+async function cancelOrder(id) {
+    const data = await postJSON(`/api/trading/orders/${id}/cancel/`);
+    const status = document.getElementById("status");
+    if (data.success) {
+        status.style.color = "var(--ink)";
+        status.textContent = `Cancelled ${data.order.side} ${data.order.remaining} @ ${fmtPrice(data.order.price)} on ${data.order.market}.`;
+    } else {
+        status.style.color = "var(--red)";
+        status.textContent = "Error: " + (data.error || "unknown");
+    }
+    loadOrders();
+}
+
+loadOrders();
+setInterval(loadOrders, 3000);
+</script>
+{% endblock %}

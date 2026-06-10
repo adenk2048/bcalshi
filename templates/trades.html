@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+
+{% block title %}Trade History — Bcalshi{% endblock %}
+
+{% block content %}
+<h1>Trade History</h1>
+
+<div class="card">
+    <table>
+        <thead>
+            <tr>
+                <th>Market</th>
+                <th>Side</th>
+                <th>Price</th>
+                <th>Shares</th>
+                <th>Counterparty</th>
+                <th>Time</th>
+            </tr>
+        </thead>
+        <tbody id="tradeRows"></tbody>
+    </table>
+    <div id="noTrades" class="empty" style="display:none;">No trades yet.</div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function loadTrades() {
+    const res = await fetch("/api/trading/trades/");
+    const data = await res.json();
+
+    document.getElementById("noTrades").style.display = data.trades.length ? "none" : "block";
+    document.getElementById("tradeRows").innerHTML = data.trades.map(t => `
+        <tr>
+            <td><a href="/market/${t.market_id}/">${escapeHtml(t.market)}</a></td>
+            <td><span class="badge ${t.side.toLowerCase()}">${t.side}</span></td>
+            <td><b>${fmtPrice(t.price)}</b></td>
+            <td>${t.shares}</td>
+            <td>${escapeHtml(t.side === "BUY" ? t.seller : t.buyer)}</td>
+            <td class="muted">${fmtDate(t.created_at)}</td>
+        </tr>
+    `).join("");
+}
+
+loadTrades();
+setInterval(loadTrades, 5000);
+</script>
+{% endblock %}

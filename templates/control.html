@@ -1,0 +1,174 @@
+{% extends "base.html" %}
+
+{% block title %}Market Control — Bcalshi{% endblock %}
+
+{% block content %}
+<h1>Market Control</h1>
+<p class="muted" style="margin-top:-10px;">
+    Superaccount panel. <b>Close</b> halts new orders (reversible).
+    <b>Resolve</b> pays out every position and cancels open orders — it cannot be undone.
+    Create new markets in the <a href="/admin/markets/market/add/">admin</a>.
+</p>
+
+<div class="card" style="margin-bottom:16px;">
+    <h2>Suggested Markets
+        {% if pending_suggestions %}<span class="badge neutral">{{ pending_suggestions|length }} pending</span>{% endif %}
+    </h2>
+    <table>
+        <thead>
+            <tr>
+                <th>Suggestion</th>
+                <th>From</th>
+                <th>Submitted</th>
+                <th style="text-align:right;">Review</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for s in pending_suggestions %}
+            <tr>
+                <td>
+                    <b>{{ s.title }}</b>
+                    {% if s.description %}<div class="muted" style="font-size:12px;">{{ s.description }}</div>{% endif %}
+                </td>
+                <td>{{ s.user.username }}</td>
+                <td class="muted">{{ s.created_at|date:"M j, H:i" }}</td>
+                <td style="text-align:right; white-space:nowrap;">
+                    <button class="btn-small btn-green" onclick="reviewSuggestion({{ s.id }}, 'approve', '{{ s.title|escapejs }}')">Approve &amp; Launch</button>
+                    <button class="btn-small btn-red" onclick="reviewSuggestion({{ s.id }}, 'reject', '{{ s.title|escapejs }}')">Reject</button>
+                </td>
+            </tr>
+            {% empty %}
+            <tr><td colspan="4" class="empty">No pending suggestions.</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    {% if reviewed_suggestions %}
+    <details style="margin-top:10px;">
+        <summary class="muted" style="cursor:pointer; font-size:13px;">Recently reviewed ({{ reviewed_suggestions|length }})</summary>
+        <table style="margin-top:8px;">
+            {% for s in reviewed_suggestions %}
+            <tr>
+                <td>{{ s.title }}</td>
+                <td>{{ s.user.username }}</td>
+                <td>
+                    {% if s.status == "APPROVED" %}<span class="badge long">APPROVED</span>
+                    {% else %}<span class="badge short">REJECTED</span>{% endif %}
+                </td>
+                <td class="muted" style="font-size:12px;">{{ s.review_note|default:"—" }}</td>
+            </tr>
+            {% endfor %}
+        </table>
+    </details>
+    {% endif %}
+</div>
+
+<div class="card">
+    <h2>Markets</h2>
+    <table>
+        <thead>
+            <tr>
+                <th>Market</th>
+                <th>Status</th>
+                <th>Last</th>
+                <th>Open Orders</th>
+                <th>Open Interest</th>
+                <th style="text-align:right;">Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for row in rows %}
+            <tr>
+                <td>
+                    <a href="/market/{{ row.market.id }}/">{{ row.market.title }}</a>
+                    {% if row.market.closes_at and not row.market.resolved %}
+                        <div class="muted" style="font-size:11px;">closes {{ row.market.closes_at }}</div>
+                    {% endif %}
+                </td>
+                <td>
+                    {% if row.market.resolved %}
+                        {% if row.market.outcome %}<span class="badge yes">RESOLVED YES</span>
+                        {% else %}<span class="badge no">RESOLVED NO</span>{% endif %}
+                    {% elif row.market.is_closed %}
+                        <span class="badge neutral">CLOSED</span>
+                    {% else %}
+                        <span class="badge long">OPEN</span>
+                    {% endif %}
+                </td>
+                <td>{% if row.last_price is not None %}{% widthratio row.last_price 1 100 %}&cent;{% else %}<span class="muted">—</span>{% endif %}</td>
+                <td>{{ row.open_orders }}</td>
+                <td>{{ row.open_interest }} <span class="muted" style="font-size:11px;">shares</span></td>
+                <td style="text-align:right; white-space:nowrap;">
+                    {% if not row.market.resolved %}
+                        <button class="btn-small btn-green" onclick="resolveMarket({{ row.market.id }}, true, '{{ row.market.title|escapejs }}')">Resolve YES</button>
+                        <button class="btn-small btn-red" onclick="resolveMarket({{ row.market.id }}, false, '{{ row.market.title|escapejs }}')">Resolve NO</button>
+                        {% if row.market.is_closed %}
+                            <button class="btn-small" onclick="closeMarket({{ row.market.id }}, 'reopen')">Reopen</button>
+                        {% else %}
+                            <button class="btn-small" onclick="closeMarket({{ row.market.id }}, 'close')">Close</button>
+                        {% endif %}
+                    {% else %}
+                        <span class="muted">—</span>
+                    {% endif %}
+                </td>
+            </tr>
+            {% empty %}
+            <tr><td colspan="6" class="empty">No markets yet.</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<p id="status" style="font-weight:600;"></p>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function showStatus(msg, isError) {
+    const el = document.getElementById("status");
+    el.style.color = isError ? "var(--red)" : "var(--green)";
+    el.textContent = msg;
+}
+
+async function resolveMarket(id, outcome, title) {
+    const label = outcome ? "YES" : "NO";
+    if (!confirm(`Resolve "${title}" as ${label}?\n\nThis pays out every position, cancels all open orders, and CANNOT be undone.`)) return;
+
+    const data = await postJSON(`/api/markets/${id}/resolve/`, { outcome });
+    if (data.success) {
+        showStatus(`Resolved ${data.market} as ${data.outcome}.`, false);
+        setTimeout(() => location.reload(), 600);
+    } else {
+        showStatus("Error: " + (data.error || "unknown"), true);
+    }
+}
+
+async function reviewSuggestion(id, action, title) {
+    let note = "";
+    if (action === "reject") {
+        note = prompt(`Reject "${title}"?\n\nOptional: tell the suggester why (visible to them).`);
+        if (note === null) return; // cancelled
+    } else {
+        if (!confirm(`Approve "${title}" and launch it as a live market?`)) return;
+    }
+
+    const data = await postJSON(`/api/markets/suggestions/${id}/review/`, { action, note });
+    if (data.success) {
+        showStatus(`Suggestion ${data.suggestion.status.toLowerCase()}: ${data.suggestion.title}`, false);
+        setTimeout(() => location.reload(), 600);
+    } else {
+        showStatus("Error: " + (data.error || "unknown"), true);
+    }
+}
+
+async function closeMarket(id, action) {
+    const data = await postJSON(`/api/markets/${id}/close/`, { action });
+    if (data.success) {
+        showStatus(`${data.market} is now ${data.status}.`, false);
+        setTimeout(() => location.reload(), 600);
+    } else {
+        showStatus("Error: " + (data.error || "unknown"), true);
+    }
+}
+</script>
+{% endblock %}
