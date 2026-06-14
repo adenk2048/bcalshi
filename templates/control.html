@@ -11,6 +11,35 @@
 </p>
 
 <div class="card" style="margin-bottom:16px;">
+    <h2>Pending Accounts
+        {% if pending_users %}<span class="badge neutral">{{ pending_users|length }} waiting</span>{% endif %}
+    </h2>
+    <table>
+        <thead>
+            <tr>
+                <th>Username</th>
+                <th>Requested</th>
+                <th style="text-align:right;">Decision</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for u in pending_users %}
+            <tr>
+                <td><b>{{ u.username }}</b></td>
+                <td class="muted">{{ u.date_joined|date:"M j, H:i" }}</td>
+                <td style="text-align:right; white-space:nowrap;">
+                    <button class="btn-small btn-green" onclick="approveUser({{ u.id }}, '{{ u.username|escapejs }}')">Approve</button>
+                    <button class="btn-small btn-red" onclick="rejectUser({{ u.id }}, '{{ u.username|escapejs }}')">Reject</button>
+                </td>
+            </tr>
+            {% empty %}
+            <tr><td colspan="3" class="empty">No accounts waiting for approval.</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<div class="card" style="margin-bottom:16px;">
     <h2>Suggested Markets
         {% if pending_suggestions %}<span class="badge neutral">{{ pending_suggestions|length }} pending</span>{% endif %}
     </h2>
@@ -137,6 +166,28 @@ async function resolveMarket(id, outcome, title) {
     const data = await postJSON(`/api/markets/${id}/resolve/`, { outcome });
     if (data.success) {
         showStatus(`Resolved ${data.market} as ${data.outcome}.`, false);
+        setTimeout(() => location.reload(), 600);
+    } else {
+        showStatus("Error: " + (data.error || "unknown"), true);
+    }
+}
+
+async function approveUser(id, name) {
+    if (!confirm(`Approve "${name}"? They'll be able to log in and trade.`)) return;
+    const data = await postJSON(`/api/users/${id}/approve/`);
+    if (data.success) {
+        showStatus(`Approved ${data.username}.`, false);
+        setTimeout(() => location.reload(), 600);
+    } else {
+        showStatus("Error: " + (data.error || "unknown"), true);
+    }
+}
+
+async function rejectUser(id, name) {
+    if (!confirm(`Reject and permanently delete the pending account "${name}"?`)) return;
+    const data = await postJSON(`/api/users/${id}/reject/`);
+    if (data.success) {
+        showStatus(`Rejected ${data.username}.`, false);
         setTimeout(() => location.reload(), 600);
     } else {
         showStatus("Error: " + (data.error || "unknown"), true);

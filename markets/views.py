@@ -1,6 +1,7 @@
 import json
 
 from django.contrib.auth.decorators import login_required, user_passes_test
+from django.contrib.auth.models import User
 from django.db import transaction
 from django.db.models import Sum
 from django.http import JsonResponse
@@ -78,10 +79,17 @@ def control_page(request):
         .select_related("user")
         .order_by("-reviewed_at")[:10]
     )
+
+    # Accounts awaiting approval: signed up (inactive) and not staff.
+    pending_users = (
+        User.objects.filter(is_active=False, is_staff=False).order_by("date_joined")
+    )
+
     return render(request, "control.html", {
         "rows": rows,
         "pending_suggestions": pending_suggestions,
         "reviewed_suggestions": reviewed_suggestions,
+        "pending_users": pending_users,
     })
 
 

@@ -4,16 +4,26 @@
 
 {% block content %}
 <div class="card" style="max-width:380px; margin:40px auto;">
+{% if submitted %}
+    <h1>Request Received</h1>
+    <p>Thanks for signing up. Bcalshi is invite-only, so your account needs to be
+       <b>approved by an admin</b> before you can log in.</p>
+    <p class="muted" style="font-size:13px;">
+        You'll be able to <a href="/accounts/login/">log in</a> once it's approved.
+    </p>
+{% else %}
     <h1>Create Account</h1>
 
     <form method="post">
         {% csrf_token %}
         {{ form.as_p }}
-        <button type="submit" class="btn-green" style="width:100%;">Sign Up</button>
+        <button type="submit" class="btn-green" style="width:100%;">Request Account</button>
     </form>
 
     <p class="muted" style="font-size:13px;">
+        New accounts require admin approval before first login.<br>
         Already have an account? <a href="/accounts/login/">Login</a>
     </p>
+{% endif %}
 </div>
 {% endblock %}

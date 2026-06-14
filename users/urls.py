@@ -7,4 +7,8 @@ urlpatterns = [
     path("login/", views.login_view),
     path("logout/", views.logout_view),
     path("me/", views.me),
+
+    # superaccount account approval
+    path("<int:user_id>/approve/", views.approve_user, name="api-approve-user"),
+    path("<int:user_id>/reject/", views.reject_user, name="api-reject-user"),
 ]
