@@ -1,0 +1,30 @@
+# Render Blueprint — defines the whole stack so the deploy is reproducible.
+# In the Render dashboard: New + → "Blueprint" → pick this repo, and it reads
+# this file. See DEPLOY.md for the full walkthrough.
+
+databases:
+  - name: bcalshi-db
+    plan: free            # free Postgres (note: free instances expire ~30 days)
+    databaseName: bcalshi
+    user: bcalshi
+
+services:
+  - type: web
+    name: bcalshi
+    runtime: python
+    plan: free            # free web service (spins down when idle, cold starts)
+    buildCommand: "./build.sh"
+    startCommand: "gunicorn config.wsgi:application"
+    envVars:
+      - key: DJANGO_SECRET_KEY
+        generateValue: true       # Render generates a strong random key
+      - key: DEBUG
+        value: "False"
+      - key: PYTHON_VERSION
+        value: "3.12.7"
+      - key: WEB_CONCURRENCY
+        value: "4"                # gunicorn worker count
+      - key: DATABASE_URL
+        fromDatabase:
+          name: bcalshi-db
+          property: connectionString

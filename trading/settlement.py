@@ -11,8 +11,6 @@ PAYOUT = Decimal("1")
 
 
 class SettlementError(Exception):
-    """A trade could not settle. `side` is Order.BUY or Order.SELL,
-    identifying the party that couldn't pay."""
 
     def __init__(self, side, message):
         self.side = side
@@ -20,17 +18,7 @@ class SettlementError(Exception):
 
 
 def settle_trade(trade):
-    """Move cash, shares and collateral for a matched trade.
 
-    Positions may go negative (short). Cash flows per share at price p:
-      - plain buy:    buyer pays p
-      - plain sell:   seller receives p
-      - short sell:   seller receives p but locks PAYOUT collateral (net -(1-p))
-      - short cover:  buyer pays p and gets PAYOUT collateral back (net +(1-p))
-
-    Raises SettlementError if either party can't fund their side; the caller
-    is expected to roll back the trade and cancel the offending order.
-    """
     buyer = trade.buyer
     seller = trade.seller
     market = trade.market
@@ -42,11 +30,10 @@ def settle_trade(trade):
         raise SettlementError(Order.BUY, "self-trades are not allowed")
 
     with transaction.atomic():
-        # Legacy accounts may predate the profile signal.
+
         ensure_profile(buyer)
         ensure_profile(seller)
 
-        # Lock both profiles in a stable order to avoid deadlocks.
         profiles = {
             p.user_id: p
             for p in Profile.objects.select_for_update()
@@ -98,15 +85,7 @@ def settle_trade(trade):
 
 
 def resolve_market(market, outcome):
-    """Resolve a market and settle every position.
 
-    YES: longs are paid PAYOUT per share; shorts forfeit their collateral
-         (which is exactly what funds the long payouts, since net shares
-         across all users sum to zero).
-    NO:  long shares expire worthless; shorts get their collateral back.
-
-    All open orders are cancelled and positions are zeroed.
-    """
     with transaction.atomic():
         market = Market.objects.select_for_update().get(pk=market.pk)
         if market.resolved:

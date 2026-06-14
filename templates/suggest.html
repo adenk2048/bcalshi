@@ -5,20 +5,19 @@
 {% block content %}
 <h1>Suggest a Market</h1>
 <p class="muted" style="margin-top:-10px;">
-    Have an event you want to trade on? Pitch it. The market admin reviews every
-    suggestion — approved ones go live as tradable markets. You can have up to
-    5 suggestions pending at once.
+    Submission will be reviewed by admin, and can then be listed in the Markets tab.
+    Up to 5 requests concurrent per account.
 </p>
 
 <div class="card" style="margin-bottom:16px;">
     <div style="margin-bottom:12px;">
         <label>Event title (phrase it as a YES/NO question)</label>
-        <input id="title" maxlength="255" placeholder="Will it snow in NYC this December?">
+        <input id="title" maxlength="255" placeholder="Enter title here">
     </div>
     <div style="margin-bottom:12px;">
         <label>Resolution criteria (optional, but helps it get approved)</label>
         <textarea id="description" rows="3" style="width:100%; font:inherit; padding:8px 10px; border:1px solid var(--line);"
-            placeholder="Resolves YES if measurable snow falls in Central Park before Jan 1."></textarea>
+            placeholder="Specify conditions for a 'YES'"></textarea>
     </div>
     <button class="btn-green" onclick="submitSuggestion()">Submit Suggestion</button>
     <span id="formStatus" style="font-weight:600; margin-left:10px;"></span>
