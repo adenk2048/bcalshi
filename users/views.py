@@ -1,6 +1,7 @@
 import json
 
 from django.contrib.auth import authenticate, login, logout
+from django.contrib.auth.decorators import login_not_required
 from django.contrib.auth.forms import UserCreationForm
 from django.contrib.auth.models import User
 from django.http import JsonResponse
@@ -8,6 +9,7 @@ from django.shortcuts import render
 from django.views.decorators.csrf import csrf_exempt
 
 
+@login_not_required
 def signup(request):
     if request.method == "POST":
         form = UserCreationForm(request.POST)
@@ -25,6 +27,7 @@ def signup(request):
     return render(request, "registration/signup.html", {"form": form})
 
 
+@login_not_required
 @csrf_exempt
 def register(request):
     if request.method != "POST":
@@ -44,6 +47,7 @@ def register(request):
     return JsonResponse({"success": True, "pending_approval": True})
 
 
+@login_not_required
 @csrf_exempt
 def login_view(request):
     if request.method != "POST":
@@ -64,11 +68,13 @@ def login_view(request):
     return JsonResponse({"success": True, "username": user.username})
 
 
+@login_not_required
 def logout_view(request):
     logout(request)
     return JsonResponse({"success": True})
 
 
+@login_not_required
 def me(request):
     if request.user.is_authenticated:
         return JsonResponse({
